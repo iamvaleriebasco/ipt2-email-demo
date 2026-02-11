@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\TransactionMail;
 use App\Models\Transaction;
 use App\Models\Account;
+use App\Mail\TransactionNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 class TransactionController extends Controller
 {
@@ -44,9 +47,11 @@ class TransactionController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($validated) {
+        $transaction = null;
+
+        DB::transaction(function () use ($validated, &$transaction) {
             $account = Account::findOrFail($validated['account_id']);
-            
+
             // Calculate new balance based on transaction type
             if ($validated['type'] === 'disbursement') {
                 // For disbursement, this adds to what customer owes (shouldn't normally happen after account creation)
@@ -57,7 +62,7 @@ class TransactionController extends Controller
             }
 
             // Create the transaction
-            Transaction::create([
+            $transaction = Transaction::create([
                 'account_id' => $validated['account_id'],
                 'transaction_number' => $validated['transaction_number'],
                 'type' => $validated['type'],
@@ -72,17 +77,38 @@ class TransactionController extends Controller
 
             // Update account balance
             $account->balance = $newBalance;
-            
+
             // Update account status if fully paid
             if ($newBalance <= 0) {
                 $account->status = 'paid';
             }
-            
+
             $account->save();
         });
 
+        // Send email notification
+        try {
+            // Load relationships for email
+            $transaction->load('account.customer', 'processedBy');
+
+            // Send to customer if they have an email
+            if ($transaction->account->customer->email) {
+                Mail::to($transaction->account->customer->email)
+                    ->send(new TransactionMail($transaction));
+            }
+
+            // Optionally send to admin/processor
+            if (Auth::user()->email) {
+                Mail::to(Auth::user()->email)
+                    ->send(new TransactionMail($transaction));
+            }
+        } catch (\Exception $e) {
+            // Log the error but don't fail the transaction creation
+            \Log::error('Failed to send transaction email: ' . $e->getMessage());
+        }
+
         return redirect()->route('transactions.index')
-            ->with('success', 'Transaction created successfully.');
+            ->with('success', 'Transaction created successfully and an email sent.');
     }
 
     /**
@@ -116,8 +142,29 @@ class TransactionController extends Controller
 
         $transaction->update($validated);
 
+        // Send email notification for update
+        try {
+            // Load relationships for email
+            $transaction->load('account.customer', 'processedBy');
+
+            // Send to customer if they have an email
+            if ($transaction->account->customer->email) {
+                Mail::to($transaction->account->customer->email)
+                    ->send(new TransactionMail($transaction));
+            }
+
+            // Optionally send to admin/processor
+            if (Auth::user()->email) {
+                Mail::to(Auth::user()->email)
+                    ->send(new TransactionMail($transaction));
+            }
+        } catch (\Exception $e) {
+            // Log the error but don't fail the transaction update
+            \Log::error('Failed to send transaction update email: ' . $e->getMessage());
+        }
+
         return redirect()->route('transactions.show', $transaction)
-            ->with('success', 'Transaction updated successfully.');
+            ->with('success', 'Transaction updated successfully and notification email sent.');
     }
 
     /**
@@ -127,21 +174,21 @@ class TransactionController extends Controller
     {
         DB::transaction(function () use ($transaction) {
             $account = $transaction->account;
-            
+
             // Reverse the transaction effect on account balance
             if ($transaction->type === 'disbursement') {
                 $account->balance -= $transaction->amount;
             } else {
                 $account->balance += $transaction->amount;
             }
-            
+
             // Update account status
             if ($account->balance > 0 && $account->status === 'paid') {
                 $account->status = 'active';
             }
-            
+
             $account->save();
-            
+
             // Delete the transaction
             $transaction->delete();
         });

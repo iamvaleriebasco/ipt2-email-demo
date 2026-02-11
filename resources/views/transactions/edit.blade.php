@@ -7,6 +7,16 @@
 
     <div class="py-12">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
+            <!-- Success Message -->
+            @if(session('success'))
+                <div id="success-message" class="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-md flex items-center justify-between">
+                    <span>{{ session('success') }}</span>
+                    <button onclick="document.getElementById('success-message').remove()" class="text-green-700 hover:text-green-900 font-bold">
+                        ✕
+                    </button>
+                </div>
+            @endif
+
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     <div class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900 rounded-md">
@@ -76,4 +86,18 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Auto-dismiss success message after 5 seconds
+        const successMessage = document.getElementById('success-message');
+        if (successMessage) {
+            setTimeout(function() {
+                successMessage.style.transition = 'opacity 0.5s ease';
+                successMessage.style.opacity = '0';
+                setTimeout(function() {
+                    successMessage.remove();
+                }, 5000);
+            }, 5000);
+        }
+    </script>
 </x-app-layout>
