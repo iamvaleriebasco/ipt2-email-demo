@@ -5,6 +5,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\ManagementController;
+use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -18,11 +19,11 @@ Route::get('/test', function () {
 });
 
 Route::get('/dashboard', function () {
-    $totalCustomers = \App\Models\Customer::count();
-    $totalAccounts = \App\Models\Account::count();
-    $activeAccounts = \App\Models\Account::where('status', 'active')->count();
-    $totalPrincipal = \App\Models\Account::sum('principal_amount');
-    $totalBalance = \App\Models\Account::sum('balance');
+    $totalCustomers     = \App\Models\Customer::count();
+    $totalAccounts      = \App\Models\Account::count();
+    $activeAccounts     = \App\Models\Account::where('status', 'active')->count();
+    $totalPrincipal     = \App\Models\Account::sum('principal_amount');
+    $totalBalance       = \App\Models\Account::sum('balance');
     $recentTransactions = \App\Models\Transaction::with('account.customer')->latest()->take(5)->get();
 
     return view('dashboard', compact(
@@ -52,6 +53,12 @@ Route::middleware('auth')->group(function () {
     // SOA routes
     Route::get('/soa', [ManagementController::class, 'soaGeneration'])->name('soa.index');
     Route::get('/soa/generate-all', [ManagementController::class, 'generateAllSOAs'])->name('soa.generateAll');
+    Route::get('/soa/{account}/generate', [ManagementController::class, 'generateSOA'])->name('soa.generate');
+    Route::get('/soa/{account}/pdf', [ManagementController::class, 'generateSOAPdf'])->name('soa.pdf');
+
+    // Report routes
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('/reports/pdf', [ReportController::class, 'generatePdf'])->name('reports.pdf');
 });
 
 require __DIR__.'/auth.php';
